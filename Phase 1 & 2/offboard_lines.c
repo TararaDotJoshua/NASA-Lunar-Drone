@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <string.h>
 
 #include "config_file.h"
 #include "mavlink_io.h"
@@ -13,6 +14,8 @@
 
 #define RATE 30
 #define STEPS 25000
+#define MAX_LINE 256
+#define CSV_PATH "/data/path_points.csv" //Change to .CSV location
 
 static int running = 0;
 static pthread_t thread_id;
@@ -21,42 +24,68 @@ static int en_debug = 0;
 static mavlink_set_position_target_local_ned_t path[STEPS];
 static mavlink_set_position_target_local_ned_t home_position;
 
-/**
- * @brief HARDCODED WAYPOINTS for the path
- * Edit these values to change the line segment path.
- */
-static const float points[][3] = {
-    {0.0, 0.0, -1.5},
-    {1.0, 0.0, -1.5},
-    {1.0, 1.0, -1.5},
-    {0.0, 1.0, -1.5},
-    {0.0, 0.0, -1.5}
-};
-static const int num_points = sizeof(points) / sizeof(points[0]);
+typedef struct {
+    float coorx[STEPS];
+    float coory[STEPS];
+    float coorz[STEPS];
+    int nb_pts;
+} CoordinateList;
 
-static void init_line_segment_path()
+static CoordinateList load_csv_coordinates()
 {
-    int cpt = 0;
-    float v = 0.1f;  // velocity
-    float a = 0.0f;  // acceleration
+    CoordinateList coordinates = { .nb_pts = 0 };
+    FILE *file = fopen(CSV_PATH, "r");
+    if (!file) {
+        perror("Could not open CSV file");
+        return coordinates;
+    }
 
-    for (int i = 0; i < num_points - 1; ++i) {
-        float dx = points[i+1][0] - points[i][0];
-        float dy = points[i+1][1] - points[i][1];
-        float dz = points[i+1][2] - points[i][2];
+    char line[MAX_LINE];
+    while (fgets(line, MAX_LINE, file)) {
+        char *token = strtok(line, ",");
+        if (token) {
+            coordinates.coorx[coordinates.nb_pts] = atof(token);
+            token = strtok(NULL, ",");
+        }
+        if (token) {
+            coordinates.coory[coordinates.nb_pts] = atof(token);
+            token = strtok(NULL, ",");
+        }
+        if (token) {
+            coordinates.coorz[coordinates.nb_pts] = atof(token);
+        }
+        coordinates.nb_pts++;
+    }
+
+    fclose(file);
+    return coordinates;
+}
+
+static void generate_path_from_csv()
+{
+    CoordinateList list = load_csv_coordinates();
+    int cpt = 0;
+    float v = 0.1f;
+    float a = 0.0f;
+
+    for (int i = 0; i < list.nb_pts - 1; ++i) {
+        float dx = list.coorx[i+1] - list.coorx[i];
+        float dy = list.coory[i+1] - list.coory[i];
+        float dz = list.coorz[i+1] - list.coorz[i];
         float dist = sqrtf(dx*dx + dy*dy + dz*dz);
         int nb_pts = floorf(dist * 50);
+        if (nb_pts < 1) nb_pts = 1;
 
-        for (int k = 0; k < nb_pts; ++k) {
+        for (int k = 0; k < nb_pts && cpt < STEPS; ++k) {
             path[cpt].time_boot_ms = 0;
             path[cpt].coordinate_frame = MAV_FRAME_LOCAL_NED;
             path[cpt].type_mask = 0;
             path[cpt].target_system = 0;
             path[cpt].target_component = AUTOPILOT_COMPID;
 
-            path[cpt].x = dx * k / nb_pts + points[i][0];
-            path[cpt].y = dy * k / nb_pts + points[i][1];
-            path[cpt].z = dz * k / nb_pts + points[i][2];
+            path[cpt].x = dx * k / nb_pts + list.coorx[i];
+            path[cpt].y = dy * k / nb_pts + list.coory[i];
+            path[cpt].z = dz * k / nb_pts + list.coorz[i];
 
             path[cpt].vx = v;
             path[cpt].vy = v;
@@ -67,7 +96,6 @@ static void init_line_segment_path()
             path[cpt].az = a;
 
             path[cpt].yaw = 0;
-
             cpt++;
         }
     }
@@ -85,7 +113,6 @@ static void init_line_segment_path()
 static void send_position(int i)
 {
     if (i >= STEPS || i < 0) return;
-
     mavlink_set_position_target_local_ned_t pos = path[i];
     if (coordinate_move_home) {
         pos.x += home_position.x;
@@ -111,7 +138,7 @@ static void* thread_func(__attribute__((unused)) void* arg)
     int64_t next_time = 0;
     int i;
 
-    init_line_segment_path();
+    generate_path_from_csv();
 
     for (i = 100; running && i > 0; --i) {
         send_home_position();

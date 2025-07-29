@@ -65,7 +65,7 @@ int load_extrinsics_file(void);
 #define VOXL_VISION_OLD_CONF_FILE "/etc/modalai/voxl-vision-px4.conf"
 #define VOXL_VISION_HUB_CONF_FILE "/etc/modalai/voxl-vision-hub.conf"
 
-#define OFFBOARD_STRINGS {"off","figure_eight","follow_tag","trajectory","vfc","backtrack","wps","square","coordinates"}
+#define OFFBOARD_STRINGS {"off","figure_eight","follow_tag","trajectory","vfc","backtrack","wps","square","coordinates","lines"}
 typedef enum offboard_mode_t{
 	OFF,
     LINES,
