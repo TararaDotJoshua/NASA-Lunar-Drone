@@ -1,5 +1,5 @@
 # NASA-Lunar-Drone
-Repository for all code and software development for the FIT UAS research lab NASA Visual Odometry Drone
+_Repository for all code and software development for the FIT UAS research lab NASA Visual Odometry Drone_
 
 All info on running code and the technical details are inside their phase folder titled:
 - DISCRIPTION.md
